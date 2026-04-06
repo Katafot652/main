@@ -77,3 +77,7 @@ if __name__ == "__main__":
         print("Error:", e)
     except Exception:
         print("Invalid input")
+        print("\n--- Object inspection ---")
+print("BTC object:", vars(btc))
+print("ETH object:", vars(eth))
+print("NFT object:", vars(nft))
