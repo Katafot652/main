@@ -1,100 +1,112 @@
-from dataclasses import dataclass
-from enum import Enum
+import os
 import json
+from enum import Enum
 
+# 1. Перелічуваний тип (Enum)
 class RiskLevel(Enum):
     LOW = "Low"
     MEDIUM = "Medium"
     HIGH = "High"
 
-@dataclass
+# 2. Базовий клас
 class Asset:
-    name: str
-    amount: float
-    _price: float
-    risk: RiskLevel
-
-    def __post_init__(self):
-        # This triggers the setter validation immediately upon object creation
-        self.price = self._price
+    def __init__(self, name: str, amount: float, price: float, risk: RiskLevel):
+        self.name = name
+        self.amount = amount
+        self.price = price  # Автоматично викликає @price.setter
+        self.risk = risk
 
     @property
-    def price(self):
+    def price(self) -> float:
         return self._price
 
     @price.setter
-    def price(self, value):
-        # ARCHITECTURAL CRASH-TEST: Validation for logically impossible price
+    def price(self, value: float):
+        # Архітектурний краш-тест
         if value <= 0:
             raise ValueError("Price must be greater than 0")
         self._price = value
 
-    def calculate_value(self):
-        raise NotImplementedError()
+    def calculate_value(self) -> float:
+        raise NotImplementedError("Цей метод має бути перевизначений у класах-нащадках")
 
+# 3. Класи-нащадки
 class CryptoCoin(Asset):
-    def calculate_value(self):
+    def __init__(self, name: str, amount: float, price: float, risk: RiskLevel, blockchain: str):
+        super().__init__(name, amount, price, risk)
+        self.blockchain = blockchain
+
+    def calculate_value(self) -> float:
         return self.amount * self.price
 
 class NFT(Asset):
-    def calculate_value(self):
+    def __init__(self, name: str, amount: float, price: float, risk: RiskLevel, collection: str):
+        super().__init__(name, amount, price, risk)
+        self.collection = collection
+
+    def calculate_value(self) -> float:
         return self.price
 
+# 4. Клас-менеджер (Композиція)
 class Portfolio:
     def __init__(self):
-        self.__assets = []
+        self._assets = []
 
-    def add_asset(self, asset):
-        self.__assets.append(asset)
+    def add_asset(self, asset: Asset):
+        self._assets.append(asset)
+        print(f"Успішно додано актив: {asset.name}")
 
-    def load_prices_from_json(self, file_path):
+    def load_prices_from_json(self, file_name: str):
+        # Автоматично знаходимо папку, в якій лежить цей скрипт (main.py)
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        # Об'єднуємо шлях до папки зі специфічним ім'ям файлу
+        full_path = os.path.join(current_dir, file_name)
+        
         try:
-            with open(file_path, "r") as file:
+            with open(full_path, "r", encoding="utf-8") as file:
                 data = json.load(file)
-
-            for asset in self.__assets:
-                if asset.name in data:
-                    asset.price = data[asset.name]
+                for asset in self._assets:
+                    if asset.name in data:
+                        asset.price = data[asset.name]
+            print(f"Ціни успішно оновлено з файлу: {full_path}")
         except FileNotFoundError:
-            print(f"File {file_path} not found.")
+            print(f"\n[ПОМИЛКА] Не вдалося знайти файл за шляхом: {full_path}")
+            print(f"Будь ласка, переконайся, що файл '{file_name}' лежить в ОДНІЙ папці з файлом програми.\n")
 
-    def total_value(self):
-        return sum(asset.calculate_value() for asset in self.__assets)
+    def total_value(self) -> float:
+        return sum(asset.calculate_value() for asset in self._assets)
 
     def show_assets(self):
-        for asset in self.__assets:
-            print(asset.name, "-", asset.calculate_value())
+        print("\n--- Склад портфеля ---")
+        for asset in self._assets:
+            det = f"({asset.blockchain})" if isinstance(asset, CryptoCoin) else f"({asset.collection})"
+            print(f"{asset.name} {det} | Ризик: {asset.risk.value} | Вартість: {asset.calculate_value()} USD")
 
+# Блок демонстрації
 if __name__ == "__main__":
+    print("--- Тестування системи трекера портфеля ---")
     try:
-        btc_amount = float(input("Enter BTC amount: "))
-        eth_amount = float(input("Enter ETH amount: "))
-        nft_price = float(input("Enter NFT price: "))
+        btc_amount = float(input("Введіть кількість BTC: "))
+        eth_amount = float(input("Введіть кількість ETH: "))
+        nft_price = float(input("Введіть початкову ціну NFT: "))
 
-        # Validation happens here thanks to __post_init__
-        btc = CryptoCoin("BTC", btc_amount, 1, RiskLevel.HIGH)
-        eth = CryptoCoin("ETH", eth_amount, 1, RiskLevel.MEDIUM)
-        nft = NFT("CoolNFT", 1, nft_price, RiskLevel.LOW)
+        btc = CryptoCoin("BTC", btc_amount, 1.0, RiskLevel.HIGH, "Bitcoin Blockchain")
+        eth = CryptoCoin("ETH", eth_amount, 1.0, RiskLevel.MEDIUM, "Ethereum Network")
+        nft = NFT("CoolNFT", 1.0, nft_price, RiskLevel.LOW, "CryptoPunks Collection")
 
         portfolio = Portfolio()
         portfolio.add_asset(btc)
         portfolio.add_asset(eth)
         portfolio.add_asset(nft)
 
-        portfolio.load_prices_from_json("Main-2/prices.json")
+        # Передаємо лише назву файлу, шлях обчислиться автоматично всередині методу
+        portfolio.load_prices_from_json("prices.json")
 
-        print("\nTotal portfolio value:", portfolio.total_value())
-
-        print("\nAssets:")
         portfolio.show_assets()
-
-        print("\n--- Object inspection ---")
-        print("BTC:", vars(btc))
-        print("ETH:", vars(eth))
-        print("NFT:", vars(nft))
+        print(f"\nЗагальна вартість портфеля: {portfolio.total_value()} USD")
 
     except ValueError as e:
-        print("\n--- CRASH-TEST TRIGGERED ---")
-        print("Error:", e)
+        print("\n[CRASH-TEST TRIGGERED] Спрацював архітектурний захист!")
+        print("Помилка валідації:", e)
     except Exception as e:
-        print("Unexpected error:", e)
+        print("\nНепередбачувана помилка:", e)
